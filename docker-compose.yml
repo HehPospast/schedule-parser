@@ -1,0 +1,9 @@
+services:
+  bot:
+    build: .
+    container_name: schedule-parser
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data  # Монтируем папку data вне контейнера
