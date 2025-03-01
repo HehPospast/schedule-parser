@@ -109,13 +109,24 @@ def save_subscriber(user_id):
 
 async def cmd_start(message: types.Message):
     user_id = str(message.from_user.id)
+    chat_id = str(message.chat.id)
 
-    if is_subscribed(user_id):
-        remove_subscriber(user_id)
-        await message.answer("Вы отписались от уведомлений о изменениях расписания.")
+    if message.chat.type in ['group', 'supergroup']:
+        id_to_save = chat_id
     else:
-        save_subscriber(user_id)
-        await message.answer("Привет! Вы успешно подписались на уведомления о изменениях расписания.")
+        id_to_save = user_id
+
+    if is_subscribed(id_to_save):
+        remove_subscriber(id_to_save)
+        reply_message = "Вы отписались от уведомлений о изменениях расписания."
+    else:
+        save_subscriber(id_to_save)
+        reply_message = "Привет! Вы успешно подписались на уведомления о изменениях расписания."
+
+    if message.chat.type in ['group', 'supergroup']:
+        await message.answer(reply_message)
+    else:
+        await bot.send_message(user_id, reply_message)
 
 
 async def check_schedule_change():
