@@ -136,7 +136,7 @@ async def check_schedule_change():
     previous_state = load_previous_state()
 
     if current_schedule_hash != previous_state:
-        message = "🚨 Расписание изменилось:\n\n"
+        message = "🚨 Расписание изменилось:\n"
         message += "\n".join(current_schedule)
         await send_telegram_notification(message)
 
