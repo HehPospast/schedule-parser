@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import os
 from dotenv import load_dotenv
+from io import BytesIO
 
 load_dotenv()
 
@@ -48,22 +49,60 @@ def fetch_schedule():
 
             if 'Расписание' in text and full_link not in unique_links:
                 unique_links.add(full_link)
-                schedule.append(f'<a href="{full_link}">{text}</a>')
+                schedule.append((text, full_link))
 
     return schedule
 
 
 def get_schedule_hash(schedule):
-    return hashlib.md5("\n".join(schedule).encode()).hexdigest()
+    links = [link for _, link in schedule]
+    return hashlib.md5("\n".join(links).encode()).hexdigest()
 
 
-async def send_telegram_notification(message):
+async def send_telegram_notification(schedule_items):
     subscribers = load_subscribers()
+
     for user_id in subscribers:
-        try:
-            await bot.send_message(user_id, message)
-        except Exception as e:
-            print(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
+        media_group = []
+        first_file = True
+        text_message = ""
+
+        for text, link in schedule_items:
+            text_message += f"📚 <a href=\"{link}\">{text}</a>\n"
+
+        for text, link in schedule_items:
+            try:
+                file_response = requests.get(link)
+                if file_response.status_code == 200:
+                    file_content = BytesIO(file_response.content)
+                    file_content.seek(0)
+                    filename = link.split("/")[-1]
+
+                    if any(filename.endswith(ext) for ext in [".pdf", ".doc", ".docx", ".xlsx", ".xls"]):
+                        if first_file:
+                            media_group.append(
+                                types.InputMediaDocument(
+                                    media=types.BufferedInputFile(file_content.read(), filename=filename),
+                                    caption=text_message,
+                                    parse_mode="HTML"
+                                )
+                            )
+                            first_file = False
+                        else:
+                            media_group.append(
+                                types.InputMediaDocument(
+                                    media=types.BufferedInputFile(file_content.read(), filename=filename)
+                                )
+                            )
+            except Exception as e:
+                print(f"Ошибка при скачивании или подготовке файла: {e}")
+
+        if media_group:
+            try:
+                await bot.send_media_group(user_id, media=media_group)
+            except Exception as e:
+                print(f"Ошибка при отправке медиагруппы пользователю {user_id}: {e}")
+
 
 
 def load_previous_state():
@@ -94,6 +133,7 @@ def remove_subscriber(user_id):
                 if subscriber.strip() != str(user_id):
                     f.write(subscriber)
 
+
 def is_subscribed(user_id):
     if os.path.exists(subscribers_file):
         with open(subscribers_file, 'r') as f:
@@ -101,10 +141,10 @@ def is_subscribed(user_id):
             return f"{user_id}\n" in subscribers
     return False
 
+
 def save_subscriber(user_id):
     with open(subscribers_file, 'a') as f:
         f.write(f"{user_id}\n")
-
 
 
 async def cmd_start(message: types.Message):
@@ -136,10 +176,7 @@ async def check_schedule_change():
     previous_state = load_previous_state()
 
     if current_schedule_hash != previous_state:
-        message = "🚨 Расписание изменилось:\n"
-        message += "\n".join(current_schedule)
-        await send_telegram_notification(message)
-
+        await send_telegram_notification(current_schedule)
         save_current_state(current_schedule_hash)
 
 
